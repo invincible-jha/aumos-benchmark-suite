@@ -1,0 +1,20 @@
+name: ci_smoke
+description: "Fast CI smoke test — minimal dataset, core metrics only. Runs in < 2 minutes."
+version: "1.0"
+
+dataset:
+  rows: 1000
+  train_ratio: 0.8
+
+metrics:
+  fidelity:
+    - tv_complement
+    - ks_statistic
+  privacy:
+    - dcr_score
+  speed:
+    - rows_per_second
+    - generation_latency_ms
+
+competitors:
+  compare_against: []

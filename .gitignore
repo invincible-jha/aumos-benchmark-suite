@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Environment variables — NEVER commit secrets
+.env
+.env.local
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Benchmark data
+benchmarks/datasets/*.csv
+benchmarks/datasets/*.parquet
+benchmarks/datasets/*.json
+benchmarks/reports/
+
+# Alembic
+src/aumos_benchmark_suite/migrations/versions/*.py

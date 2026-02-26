@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      AUMOS_BENCHMARK_DATABASE_URL: postgresql+asyncpg://aumos:aumos@postgres:5432/aumos_benchmark
+      AUMOS_BENCHMARK_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AUMOS_BENCHMARK_TABULAR_ENGINE_URL: http://tabular-engine:8004
+      AUMOS_BENCHMARK_PRIVACY_ENGINE_URL: http://privacy-engine:8010
+      AUMOS_BENCHMARK_FIDELITY_VALIDATOR_URL: http://fidelity-validator:8013
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    volumes:
+      - benchmark_data:/data/benchmarks
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aumos
+      POSTGRES_PASSWORD: aumos
+      POSTGRES_DB: aumos_benchmark
+    ports:
+      - "5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aumos -d aumos_benchmark"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: benchmark-suite-dev-cluster
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9095:9092"
+
+volumes:
+  postgres_data:
+  benchmark_data:

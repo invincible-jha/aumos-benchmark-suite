@@ -1,0 +1,31 @@
+name: tabular_full_suite
+description: "Full fidelity + privacy + speed benchmark suite for tabular data synthesis"
+version: "1.0"
+
+dataset:
+  rows: 10000
+  train_ratio: 0.8
+
+metrics:
+  fidelity:
+    - ks_statistic
+    - tv_complement
+    - correlation_similarity
+    - column_pair_trends
+    - boundary_coverage
+    - ml_efficacy_score
+  privacy:
+    - membership_inference_auc
+    - attribute_inference_risk
+    - dcr_score
+    - nndr_score
+  speed:
+    - rows_per_second
+    - generation_latency_ms
+    - peak_memory_mb
+
+competitors:
+  compare_against:
+    - gretel
+    - mostly_ai
+    - tonic
