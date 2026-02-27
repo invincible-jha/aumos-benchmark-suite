@@ -419,3 +419,375 @@ class IBenchmarkRunnerAdapter(Protocol):
             Tuple of (is_valid, list_of_validation_errors).
         """
         ...
+
+
+@runtime_checkable
+class ILatencyBenchmark(Protocol):
+    """Interface for the latency benchmark adapter."""
+
+    async def measure_endpoint(
+        self,
+        run_id: uuid.UUID,
+        endpoint_url: str,
+        method: str,
+        payload: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        sample_count: int,
+    ) -> dict[str, Any]:
+        """Measure latency distribution for a single endpoint.
+
+        Args:
+            run_id: BenchmarkRun UUID for correlation logging.
+            endpoint_url: Full URL of the endpoint to probe.
+            method: HTTP method.
+            payload: Optional JSON request body.
+            headers: Optional extra request headers.
+            sample_count: Number of measurement samples to collect.
+
+        Returns:
+            Dict with latency percentiles, mean, stddev, min, max.
+        """
+        ...
+
+    def generate_latency_report(
+        self,
+        run_id: uuid.UUID,
+        measurements: list[dict[str, Any]],
+        comparison: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured latency report from collected measurements.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            measurements: List of endpoint measurement dicts.
+            comparison: Optional baseline comparison dict.
+
+        Returns:
+            Structured latency report.
+        """
+        ...
+
+
+@runtime_checkable
+class IThroughputBenchmark(Protocol):
+    """Interface for the throughput benchmark adapter."""
+
+    async def measure_max_rps(
+        self,
+        run_id: uuid.UUID,
+        endpoint_url: str,
+        method: str,
+        payload: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        max_concurrency: int,
+    ) -> dict[str, Any]:
+        """Find the maximum achievable requests per second for an endpoint.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            endpoint_url: Full URL.
+            method: HTTP method.
+            payload: Optional JSON body.
+            headers: Optional extra headers.
+            max_concurrency: Maximum concurrent connections.
+
+        Returns:
+            Dict with max_rps, peak_concurrency, saturation_point.
+        """
+        ...
+
+    def generate_throughput_report(
+        self,
+        run_id: uuid.UUID,
+        measurements: list[dict[str, Any]],
+        version_comparisons: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured throughput report.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            measurements: List of endpoint max RPS measurement dicts.
+            version_comparisons: Optional list of version comparison dicts.
+
+        Returns:
+            Structured throughput report.
+        """
+        ...
+
+
+@runtime_checkable
+class ICostBenchmark(Protocol):
+    """Interface for the cost benchmark adapter."""
+
+    async def measure_inference_cost(
+        self,
+        run_id: uuid.UUID,
+        operation_name: str,
+        duration_seconds: float,
+        rows_produced: int,
+        peak_memory_mb: float,
+        uses_gpu: bool,
+        output_size_bytes: int,
+    ) -> Any:
+        """Compute cost for a single inference operation.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            operation_name: Descriptive name.
+            duration_seconds: Measured wall-clock duration.
+            rows_produced: Number of rows produced.
+            peak_memory_mb: Peak memory utilization.
+            uses_gpu: Whether GPU was used.
+            output_size_bytes: Size of output data in bytes.
+
+        Returns:
+            OperationCostMeasurement with all cost components.
+        """
+        ...
+
+    def generate_cost_report(
+        self,
+        run_id: uuid.UUID,
+        measurements: list[Any],
+        provider_comparison: dict[str, Any] | None,
+        optimizations: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured cost benchmark report.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            measurements: List of cost measurement instances.
+            provider_comparison: Optional cross-provider comparison dict.
+            optimizations: Optional list of optimization recommendations.
+
+        Returns:
+            Structured cost report.
+        """
+        ...
+
+
+@runtime_checkable
+class IFidelityBenchmark(Protocol):
+    """Interface for the fidelity benchmark adapter."""
+
+    async def run_quality_benchmark(
+        self,
+        run_id: uuid.UUID,
+        dataset_name: str,
+        generator_name: str,
+        dataset_rows: int,
+        metadata: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Run a full quality benchmark for a single generator.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            dataset_name: Reference dataset name.
+            generator_name: Synthesis model under test.
+            dataset_rows: Number of synthetic rows to evaluate.
+            metadata: Optional metadata hints.
+
+        Returns:
+            Dict with overall_score, per-metric scores, and pass/fail status.
+        """
+        ...
+
+    def generate_fidelity_report(
+        self,
+        run_id: uuid.UUID,
+        benchmark_results: list[dict[str, Any]],
+        comparison: dict[str, Any] | None,
+        consistency: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured fidelity benchmark report.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            benchmark_results: List of quality benchmark outputs.
+            comparison: Optional generator comparison dict.
+            consistency: Optional quality consistency dict.
+
+        Returns:
+            Structured fidelity report.
+        """
+        ...
+
+
+@runtime_checkable
+class IPrivacyBenchmark(Protocol):
+    """Interface for the privacy benchmark adapter."""
+
+    async def measure_reid_risk(
+        self,
+        run_id: uuid.UUID,
+        dataset_name: str,
+        generator_name: str,
+        dataset_rows: int,
+    ) -> dict[str, Any]:
+        """Measure re-identification risk for a synthetic dataset.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            dataset_name: Reference dataset name.
+            generator_name: Generator under test.
+            dataset_rows: Row count to evaluate.
+
+        Returns:
+            Dict with per-metric risk scores and aggregate risk flag.
+        """
+        ...
+
+    def generate_privacy_report(
+        self,
+        run_id: uuid.UUID,
+        measurements: list[dict[str, Any]],
+        guarantee_verification: dict[str, Any] | None,
+        tradeoff_curve: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured privacy benchmark report.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            measurements: List of privacy measurement dicts.
+            guarantee_verification: Optional guarantee verification dict.
+            tradeoff_curve: Optional privacy-utility tradeoff curve.
+
+        Returns:
+            Structured privacy report.
+        """
+        ...
+
+
+@runtime_checkable
+class IScalabilityBenchmark(Protocol):
+    """Interface for the scalability benchmark adapter."""
+
+    async def run_linear_scalability_test(
+        self,
+        run_id: uuid.UUID,
+        dataset_name: str,
+        base_row_count: int,
+        scale_multipliers: list[int] | None,
+    ) -> dict[str, Any]:
+        """Test linear scalability by generating data at increasing volumes.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            dataset_name: Dataset name.
+            base_row_count: Number of rows at the 1x baseline.
+            scale_multipliers: List of scale multipliers to test.
+
+        Returns:
+            Dict with scale_curve, scaling_ceiling, is_linear_scalable.
+        """
+        ...
+
+    def generate_scalability_report(
+        self,
+        run_id: uuid.UUID,
+        linear_test: dict[str, Any],
+        horizontal_test: dict[str, Any] | None,
+        isolation_test: dict[str, Any] | None,
+        bottlenecks: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured scalability benchmark report.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            linear_test: Output from run_linear_scalability_test.
+            horizontal_test: Optional horizontal scaling results.
+            isolation_test: Optional tenant isolation results.
+            bottlenecks: Optional list from identify_bottlenecks.
+
+        Returns:
+            Structured scalability report.
+        """
+        ...
+
+
+@runtime_checkable
+class IComparisonReporter(Protocol):
+    """Interface for the benchmark comparison reporter adapter."""
+
+    def compare_versions(
+        self,
+        run_id: uuid.UUID,
+        current_run: dict[str, Any],
+        baseline_run: dict[str, Any],
+        metric_categories: list[str] | None,
+    ) -> dict[str, Any]:
+        """Generate a cross-version comparison between two benchmark runs.
+
+        Args:
+            run_id: Current BenchmarkRun UUID.
+            current_run: Full report dict from the current run.
+            baseline_run: Full report dict from the baseline run.
+            metric_categories: Optional subset of categories to compare.
+
+        Returns:
+            Version comparison dict with per-metric deltas and regression flags.
+        """
+        ...
+
+    def export_report(
+        self,
+        report: dict[str, Any],
+        output_format: str,
+    ) -> str:
+        """Export a report to the specified format string.
+
+        Args:
+            report: Report dict to serialize.
+            output_format: Output format (json | html | markdown).
+
+        Returns:
+            String representation in the requested format.
+        """
+        ...
+
+
+@runtime_checkable
+class IGPUBenchmark(Protocol):
+    """Interface for the GPU benchmark adapter."""
+
+    async def profile_gpu_utilization(
+        self,
+        run_id: uuid.UUID,
+        dataset_name: str,
+        gpu_type: str,
+        row_count: int,
+        sample_interval_seconds: float,
+    ) -> Any:
+        """Profile GPU utilization during synthetic data generation.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            dataset_name: Dataset name.
+            gpu_type: GPU model identifier.
+            row_count: Rows to generate.
+            sample_interval_seconds: Metrics polling interval.
+
+        Returns:
+            GPUMeasurement with utilization and throughput statistics.
+        """
+        ...
+
+    def generate_gpu_report(
+        self,
+        run_id: uuid.UUID,
+        measurements: list[Any],
+        multi_gpu_results: dict[str, Any] | None,
+        cost_ratios: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Generate a structured GPU benchmark report.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            measurements: List of GPUMeasurement instances.
+            multi_gpu_results: Optional multi-GPU scaling dict.
+            cost_ratios: Optional cost-performance ratio list.
+
+        Returns:
+            Structured GPU benchmark report.
+        """
+        ...

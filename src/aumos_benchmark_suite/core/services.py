@@ -22,9 +22,17 @@ from aumos_common.observability import get_logger
 from aumos_benchmark_suite.core.interfaces import (
     IBenchmarkRunnerAdapter,
     IBenchmarkRunRepository,
+    IComparisonReporter,
     ICompetitorBaselineRepository,
+    ICostBenchmark,
+    IFidelityBenchmark,
+    IGPUBenchmark,
+    ILatencyBenchmark,
     IMetricResultRepository,
+    IPrivacyBenchmark,
     IRegressionCheckRepository,
+    IScalabilityBenchmark,
+    IThroughputBenchmark,
 )
 from aumos_benchmark_suite.core.models import (
     BenchmarkRun,
@@ -875,7 +883,7 @@ class ReportGeneratorService:
 
         return report
 
-    async def _build_competitor_comparison(
+    async def _build_competitor_comparison(  # noqa: C901
         self,
         tenant_id: uuid.UUID,
         dataset_name: str,
@@ -925,3 +933,251 @@ class ReportGeneratorService:
             comparison[metric.metric_name] = metric_comparison
 
         return comparison
+
+
+class DomainBenchmarkService:
+    """Orchestrate domain-specific benchmark adapters for latency, throughput, cost, fidelity,
+    privacy, scalability, comparison reporting, and GPU profiling.
+
+    This service acts as a facade over the specialised benchmark adapters,
+    routing benchmark requests to the appropriate adapter based on benchmark type
+    and assembling multi-adapter reports.
+    """
+
+    def __init__(
+        self,
+        latency_benchmark: ILatencyBenchmark,
+        throughput_benchmark: IThroughputBenchmark,
+        cost_benchmark: ICostBenchmark,
+        fidelity_benchmark: IFidelityBenchmark,
+        privacy_benchmark: IPrivacyBenchmark,
+        scalability_benchmark: IScalabilityBenchmark,
+        comparison_reporter: IComparisonReporter,
+        gpu_benchmark: IGPUBenchmark,
+        event_publisher: EventPublisher,
+    ) -> None:
+        """Initialise with all injected domain benchmark adapters.
+
+        Args:
+            latency_benchmark: Latency measurement adapter.
+            throughput_benchmark: Throughput measurement adapter.
+            cost_benchmark: Cost measurement adapter.
+            fidelity_benchmark: Fidelity quality benchmark adapter.
+            privacy_benchmark: Privacy guarantee benchmark adapter.
+            scalability_benchmark: Scalability testing adapter.
+            comparison_reporter: Cross-version/provider comparison adapter.
+            gpu_benchmark: GPU efficiency profiling adapter.
+            event_publisher: Kafka event publisher.
+        """
+        self._latency = latency_benchmark
+        self._throughput = throughput_benchmark
+        self._cost = cost_benchmark
+        self._fidelity = fidelity_benchmark
+        self._privacy = privacy_benchmark
+        self._scalability = scalability_benchmark
+        self._comparison = comparison_reporter
+        self._gpu = gpu_benchmark
+        self._publisher = event_publisher
+
+    async def run_latency_benchmark(
+        self,
+        run_id: uuid.UUID,
+        endpoint_url: str,
+        sample_count: int = 50,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run a latency benchmark for a single endpoint and publish event.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            endpoint_url: Full URL of the target endpoint.
+            sample_count: Number of measurement samples.
+            method: HTTP method.
+            payload: Optional JSON body.
+
+        Returns:
+            Latency report dict.
+        """
+        measurement = await self._latency.measure_endpoint(
+            run_id=run_id,
+            endpoint_url=endpoint_url,
+            method=method,
+            payload=payload,
+            headers=None,
+            sample_count=sample_count,
+        )
+        report = self._latency.generate_latency_report(
+            run_id=run_id,
+            measurements=[measurement],
+            comparison=None,
+        )
+
+        await self._publisher.publish(
+            Topics.BENCHMARK,
+            {
+                "event_type": "benchmark.latency.completed",
+                "run_id": str(run_id),
+                "endpoint_url": endpoint_url,
+                "p95_ms": measurement.get("percentiles", {}).get("p95"),
+            },
+        )
+
+        logger.info(
+            "Latency benchmark completed",
+            run_id=str(run_id),
+            endpoint=endpoint_url,
+            p95_ms=measurement.get("percentiles", {}).get("p95"),
+        )
+
+        return report
+
+    async def run_throughput_benchmark(
+        self,
+        run_id: uuid.UUID,
+        endpoint_url: str,
+        max_concurrency: int = 50,
+        method: str = "GET",
+    ) -> dict[str, Any]:
+        """Run a throughput benchmark and publish event.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            endpoint_url: Full URL of the target endpoint.
+            max_concurrency: Maximum concurrent connections to test.
+            method: HTTP method.
+
+        Returns:
+            Throughput report dict.
+        """
+        measurement = await self._throughput.measure_max_rps(
+            run_id=run_id,
+            endpoint_url=endpoint_url,
+            method=method,
+            payload=None,
+            headers=None,
+            max_concurrency=max_concurrency,
+        )
+        report = self._throughput.generate_throughput_report(
+            run_id=run_id,
+            measurements=[measurement],
+            version_comparisons=None,
+        )
+
+        await self._publisher.publish(
+            Topics.BENCHMARK,
+            {
+                "event_type": "benchmark.throughput.completed",
+                "run_id": str(run_id),
+                "endpoint_url": endpoint_url,
+                "max_rps": measurement.get("max_rps"),
+            },
+        )
+
+        logger.info(
+            "Throughput benchmark completed",
+            run_id=str(run_id),
+            endpoint=endpoint_url,
+            max_rps=measurement.get("max_rps"),
+        )
+
+        return report
+
+    async def run_scalability_benchmark(
+        self,
+        run_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        dataset_name: str,
+        base_row_count: int = 1000,
+    ) -> dict[str, Any]:
+        """Run a full scalability benchmark and publish event.
+
+        Args:
+            run_id: BenchmarkRun UUID.
+            tenant_id: Owning tenant UUID.
+            dataset_name: Dataset name for generation.
+            base_row_count: Baseline row count at 1x scale.
+
+        Returns:
+            Scalability report dict.
+        """
+        linear_test = await self._scalability.run_linear_scalability_test(
+            run_id=run_id,
+            dataset_name=dataset_name,
+            base_row_count=base_row_count,
+            scale_multipliers=None,
+        )
+        report = self._scalability.generate_scalability_report(
+            run_id=run_id,
+            linear_test=linear_test,
+            horizontal_test=None,
+            isolation_test=None,
+            bottlenecks=None,
+        )
+
+        await self._publisher.publish(
+            Topics.BENCHMARK,
+            {
+                "event_type": "benchmark.scalability.completed",
+                "tenant_id": str(tenant_id),
+                "run_id": str(run_id),
+                "is_linear_scalable": linear_test.get("is_linear_scalable"),
+                "scaling_ceiling": linear_test.get("scaling_ceiling_multiplier"),
+            },
+        )
+
+        logger.info(
+            "Scalability benchmark completed",
+            run_id=str(run_id),
+            is_linear=linear_test.get("is_linear_scalable"),
+        )
+
+        return report
+
+    async def generate_comparison_report(
+        self,
+        run_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        current_run: dict[str, Any],
+        baseline_run: dict[str, Any],
+        output_format: str = "json",
+    ) -> str:
+        """Generate and export a cross-version comparison report.
+
+        Args:
+            run_id: Current BenchmarkRun UUID.
+            tenant_id: Owning tenant UUID.
+            current_run: Full report dict for the current run.
+            baseline_run: Full report dict for the baseline run.
+            output_format: Output format (json | html | markdown).
+
+        Returns:
+            Serialized report string in the requested format.
+        """
+        comparison = self._comparison.compare_versions(
+            run_id=run_id,
+            current_run=current_run,
+            baseline_run=baseline_run,
+            metric_categories=None,
+        )
+        exported = self._comparison.export_report(comparison, output_format)
+
+        await self._publisher.publish(
+            Topics.BENCHMARK,
+            {
+                "event_type": "benchmark.comparison_report.generated",
+                "tenant_id": str(tenant_id),
+                "run_id": str(run_id),
+                "format": output_format,
+                "regression_count": len(comparison.get("regressions", [])),
+            },
+        )
+
+        logger.info(
+            "Comparison report generated",
+            run_id=str(run_id),
+            format=output_format,
+            regressions=len(comparison.get("regressions", [])),
+        )
+
+        return exported
