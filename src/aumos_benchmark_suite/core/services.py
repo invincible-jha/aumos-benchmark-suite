@@ -46,8 +46,10 @@ logger = get_logger(__name__)
 # Valid benchmark run status values
 TERMINAL_RUN_STATUSES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
 
-# Valid competitor names
-VALID_COMPETITORS: frozenset[str] = frozenset({"gretel", "mostly_ai", "tonic"})
+# Valid competitor names (GAP-464: expanded to include datarobot, hazy, k2view, synthesized)
+VALID_COMPETITORS: frozenset[str] = frozenset(
+    {"gretel", "mostly_ai", "tonic", "datarobot", "hazy", "k2view", "synthesized"}
+)
 
 # Valid metric categories
 VALID_METRIC_CATEGORIES: frozenset[str] = frozenset({"fidelity", "privacy", "speed"})
